@@ -1,0 +1,35 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environments and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Build output and caches
+dist/
+build/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+*.log
+
+# Sandbox scratch files: keep the directory, ignore what lands in it.
+# Force-add anything worth committing with `git add -f sandbox/<file>`.
+sandbox/*
+!sandbox/.gitkeep
