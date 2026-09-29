@@ -1,0 +1,138 @@
+# Deploy complet într-un singur fișier:  kubectl apply -f k8s/deploy.yaml
+# Înainte: creează secretul admin-accounts-secret și copiază certificatul wildcard în admin-accounts-tls (vezi README).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: admin-accounts
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: admin-accounts-data
+  namespace: admin-accounts
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-accounts-cm
+  namespace: admin-accounts
+data:
+  DATABASE_URL: "sqlite:////data/app.db"
+  SESSION_COOKIE_SECURE: "true"
+  PROXY_COUNT: "1"
+  LOG_LEVEL: "INFO"
+  # platformele; lasă-le pe cele pe care nu le conectezi încă, aplicația le ignoră fără secretul lor
+  JIRA_URL: "https://jira.domeniu.ro"
+  KEYCLOAK_URL: "https://keycloak.domeniu.ro"
+  KEYCLOAK_REALM: "master"
+  KEYCLOAK_CLIENT_ID: "account-manager"
+  NEXTCLOUD_URL: "https://cloud.domeniu.ro"
+  NEXTCLOUD_USER: "admin"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-accounts
+  namespace: admin-accounts
+spec:
+  replicas: 1            # SQLite pe volum RWO: un singur pod
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: admin-accounts
+  template:
+    metadata:
+      labels:
+        app: admin-accounts
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend
+          image: nexus.domeniu.ro/account-manager@sha256:REPLACE   # docker inspect --format '{{index .RepoDigests 0}}' <imagine>
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: admin-accounts-cm
+            - secretRef:
+                name: admin-accounts-secret
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: admin-accounts-data
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-accounts
+  namespace: admin-accounts
+spec:
+  selector:
+    app: admin-accounts
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin-accounts
+  namespace: admin-accounts
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["accounts.domeniu.ro"]
+      secretName: admin-accounts-tls   # copia certificatului wildcard
+  rules:
+    - host: accounts.domeniu.ro
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-accounts
+                port:
+                  number: 80

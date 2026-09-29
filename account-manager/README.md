@@ -84,7 +84,7 @@ flask --app wsgi import-users keycloak utilizatori.csv --no-password
 - **CSRF** pe toate formularele, acțiunile distructive doar prin POST cu confirmare, ștergerea cere retastarea numelui.
 - **Headere**: CSP strict (fără JS extern, fără inline), `X-Frame-Options: DENY`, `nosniff`, `no-store`, HSTS.
 - **Către platforme**: TLS verificat (configurabil CA custom prin `REQUESTS_CA_BUNDLE`), timeouts, mesaje de eroare filtrate.
-- **Container**: user neprivilegiat (UID 10001), root filesystem read-only, fără capabilities, `seccomp RuntimeDefault`, `NetworkPolicy` care permite intrare doar de la ingress și ieșire doar pe DNS/443, namespace cu Pod Security `restricted`.
+- **Container**: user neprivilegiat (UID 10001), root filesystem read-only, fără escaladare de privilegii.
 - **Parolele generate** pentru utilizatorii noi/resetări sunt afișate o singură dată și nu sunt persistate.
 
 ## Configurare
@@ -139,71 +139,50 @@ Alternativ, `docker compose up --build` face același lucru citind `.env`.
 
 Dacă platformele au certificate de la o CA internă: `-v /cale/ca.crt:/etc/ssl/custom/ca.crt:ro -e REQUESTS_CA_BUNDLE=/etc/ssl/custom/ca.crt`.
 
-## Deploy simplu în cluster (fără CI/CD)
+## Deploy în cluster
 
-Ai nevoie doar de `docker`, `kubectl` și un registry la care ajunge clusterul (sau, pentru un cluster de test cu un singur nod, încărcarea imaginii direct pe nod).
+Un singur fișier, `k8s/deploy.yaml`, în același stil cu celelalte proiecte: Namespace, PVC (Longhorn), ConfigMap, Deployment, Service, Ingress. Secretele nu trec prin git.
 
 ```sh
-# 1. imaginea
-docker build -t registry.example.com/account-manager:1.0.0 account-manager/
-docker push registry.example.com/account-manager:1.0.0
-#    fără registry, pe k3s:  docker save account-manager:local | sudo k3s ctr images import -
-#    pe kind:                kind load docker-image account-manager:local
-#    pe minikube:            minikube image load account-manager:local
-#    și pune imaginea respectivă în k8s/kustomization.yaml (newName/newTag)
+# 1. imaginea în Nexus, referită apoi pe digest
+docker build -t nexus.domeniu.ro/account-manager:1.0.0 account-manager/
+docker push nexus.domeniu.ro/account-manager:1.0.0
+docker inspect --format '{{index .RepoDigests 0}}' nexus.domeniu.ro/account-manager:1.0.0   # -> pune valoarea la image: în deploy.yaml
 
-# 2. adaptează manifestele (o singură dată)
-#    k8s/kustomization.yaml  -> images.newName / newTag
-#    k8s/configmap.yaml      -> KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, JIRA_URL, NEXTCLOUD_URL, NEXTCLOUD_USER
-#    k8s/ingress.yaml        -> host, ingressClassName, anotarea cert-manager.io/cluster-issuer (sau secret TLS propriu)
-#    k8s/networkpolicy.yaml  -> namespace-ul ingress controller-ului tău
-#    k8s/pvc.yaml            -> storageClassName dacă nu ai una implicită
+# 2. completează în k8s/deploy.yaml: image (digest), URL-urile platformelor din ConfigMap, host-ul din Ingress
 
-# 3. namespace + secrete (secretele nu trec niciodată prin git)
-kubectl create namespace account-manager
-#    registry privat (Nexus, Harbor...): pull secret, numele e referit în deployment.yaml
-kubectl -n account-manager create secret docker-registry nexus-registry \
-  --docker-server=nexus.example.com --docker-username='<user>' --docker-password='<parola sau token>'
-kubectl -n account-manager create secret generic account-manager-secrets \
+# 3. namespace, certificat wildcard, secretul aplicației
+kubectl create namespace admin-accounts
+kubectl get secret <wildcard> -n <ns-sursa> -o json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps({'apiVersion':'v1','kind':'Secret','type':d['type'],'metadata':{'name':'admin-accounts-tls','namespace':'admin-accounts'},'data':d['data']}))" \
+  | kubectl apply -f -
+kubectl -n admin-accounts create secret generic admin-accounts-secret \
   --from-literal=SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(32))')" \
   --from-literal=BOOTSTRAP_ADMIN_USERNAME=admin \
   --from-literal=BOOTSTRAP_ADMIN_PASSWORD='ParolaTemporara-Schimbata-La-Login' \
-  --from-literal=KEYCLOAK_CLIENT_SECRET='...' \
-  --from-literal=JIRA_TOKEN='...' \
-  --from-literal=NEXTCLOUD_APP_PASSWORD='...'
+  --from-literal=JIRA_TOKEN='...'            # + KEYCLOAK_CLIENT_SECRET / NEXTCLOUD_APP_PASSWORD când le conectezi
 
 # 4. deploy
-kubectl apply -k account-manager/k8s/
-kubectl -n account-manager rollout status deploy/account-manager
-kubectl -n account-manager logs deploy/account-manager --tail=50
-
-# 5. dacă nu ai încă ingress/DNS, testează prin port-forward
-kubectl -n account-manager port-forward svc/account-manager 8000:80
-#    -> http://localhost:8000 (cookie-ul e marcat Secure; pentru test pe http pune
-#       SESSION_COOKIE_SECURE=false în ConfigMap temporar, apoi revino la true)
+kubectl apply -f account-manager/k8s/deploy.yaml
+kubectl -n admin-accounts get pods -w
+kubectl -n admin-accounts logs deploy/admin-accounts
 ```
 
-Autentifică-te cu admin-ul de bootstrap, schimbă parola, creează operatorii din **Operatori**. După aceea poți scoate `BOOTSTRAP_ADMIN_*` din Secret; nu se mai folosesc oricum când există operatori.
+Până ai DNS, pui `<IP ingress> accounts.domeniu.ro` în fișierul hosts; IP-ul e `EXTERNAL-IP` din `kubectl -n nginx-ingress get svc`.
 
-Actualizare la o versiune nouă, fără CI/CD:
+Autentifică-te cu admin-ul de bootstrap, schimbă parola, creează operatorii din **Operatori**. După aceea poți scoate `BOOTSTRAP_ADMIN_*` din secret; nu se mai folosesc când există operatori.
 
-```sh
-docker build -t registry.example.com/account-manager:1.0.1 account-manager/ && docker push registry.example.com/account-manager:1.0.1
-kubectl -n account-manager set image deploy/account-manager app=registry.example.com/account-manager:1.0.1
-kubectl -n account-manager rollout status deploy/account-manager
-```
+Versiune nouă: build, push, pune noul digest la `image:` și `kubectl apply -f` din nou. Secretele și volumul rămân.
 
 Comenzi utile:
 
 ```sh
-# creare/promovare admin din pod (parola e cerută interactiv)
-kubectl -n account-manager exec -it deploy/account-manager -- flask --app wsgi create-admin cosmin
-# provisionare din pod, cu raport pas cu pas
-kubectl -n account-manager exec -it deploy/account-manager -- \
-  flask --app wsgi provision-user keycloak ion.popescu --email ion@example.com --group /dev
-# backup bază de date (SQLite)
-kubectl -n account-manager exec deploy/account-manager -- cat /data/app.db > backup-$(date +%F).db
+kubectl -n admin-accounts exec -it deploy/admin-accounts -- flask --app wsgi create-admin cosmin
+kubectl -n admin-accounts exec -it deploy/admin-accounts -- flask --app wsgi provision-user keycloak ion.popescu --group /dev
+kubectl -n admin-accounts exec deploy/admin-accounts -- cat /data/app.db > backup-$(date +%F).db
 ```
+
+Dacă pod-ul rămâne în `ImagePullBackOff`, nodurile nu ajung la Nexus sau au nevoie de un pull secret: `kubectl -n admin-accounts create secret docker-registry nexus --docker-server=nexus.domeniu.ro --docker-username=... --docker-password=...` și adaugă în Deployment `imagePullSecrets: [{name: nexus}]` la nivel de `spec.template.spec`.
 
 ## Structura
 
@@ -226,7 +205,7 @@ account-manager/
 │   ├── cli.py               # flask create-admin, provision-user, import-users
 │   └── templates/, static/
 ├── tests/                   # pytest, API-uri mock-uite cu requests-mock
-├── k8s/                     # manifeste kustomize
+├── k8s/deploy.yaml          # tot deploy-ul Kubernetes într-un fișier
 ├── Dockerfile, gunicorn.conf.py, wsgi.py, docker-compose.yml
 └── requirements*.txt
 ```
@@ -236,5 +215,4 @@ account-manager/
 - SQLite pe volum RWO înseamnă **un singur replica** (`strategy: Recreate`). Pentru HA, treci la PostgreSQL prin `DATABASE_URL`.
 - Dezactivarea utilizatorilor în Jira prin REST necesită Jira 8.x+ și un director de utilizatori intern (nu LDAP read-only).
 - În Nextcloud, listarea utilizatorilor cere câte un apel per utilizator (limitarea API-ului OCS); căutarea este limitată la 50 de rezultate.
-- `NetworkPolicy` permite ieșire doar pe 443; dacă o platformă ascultă pe alt port (ex. Jira pe 8080), adaugă-l în `networkpolicy.yaml`.
 - Nu există MFA pentru operatori; recomandat este accesul la UI doar din rețeaua internă/VPN (vezi `whitelist-source-range` în `ingress.yaml`).
