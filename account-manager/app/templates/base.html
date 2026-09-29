@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Account Manager{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('index') }}">Account Manager</a>
+  {% if current_user.is_authenticated %}
+  <nav>
+    {% for p in nav_platforms %}
+      <a href="{{ url_for('platforms.users', key=p.key) }}" class="{{ 'active' if request.path.startswith('/p/' ~ p.key) }}">{{ p.label }}</a>
+    {% endfor %}
+    {% if current_user.is_admin %}
+      <a href="{{ url_for('admin.operators') }}" class="{{ 'active' if request.path.startswith('/admin/operators') }}">Operatori</a>
+      <a href="{{ url_for('admin.audit_log') }}" class="{{ 'active' if request.path.startswith('/admin/audit') }}">Audit</a>
+    {% endif %}
+  </nav>
+  <div class="user">
+    <a href="{{ url_for('auth.account') }}">{{ current_user.display_name or current_user.username }}</a>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="link" type="submit">Ieșire</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

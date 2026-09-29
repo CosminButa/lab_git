@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Audit{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Jurnal de audit</h1>
+  <form method="get" class="inline">
+    <select name="platform">
+      <option value="">Toate platformele</option>
+      {% for k in ['app', 'keycloak', 'jira', 'nextcloud'] %}
+        <option value="{{ k }}" {{ 'selected' if platform == k }}>{{ k }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn small secondary" type="submit">Filtrează</button>
+  </form>
+</div>
+<table>
+  <thead><tr><th>Data (UTC)</th><th>Operator</th><th>Platformă</th><th>Acțiune</th><th>Țintă</th><th>Rezultat</th><th>Detalii</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td>{{ e.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>{{ e.operator }}</td>
+      <td>{{ e.platform }}</td>
+      <td>{{ e.action }}</td>
+      <td>{{ e.target }}</td>
+      <td><span class="tag {{ 'on' if e.outcome == 'ok' else 'off' }}">{{ e.outcome }}</span></td>
+      <td class="muted">{{ e.details }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Nicio înregistrare.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="pager">
+  {% if page > 1 %}<a class="btn small ghost" href="{{ url_for('admin.audit_log', page=page-1, platform=platform) }}">« Anterior</a>{% endif %}
+  {% if has_next %}<a class="btn small ghost" href="{{ url_for('admin.audit_log', page=page+1, platform=platform) }}">Următor »</a>{% endif %}
+</div>
+{% endblock %}

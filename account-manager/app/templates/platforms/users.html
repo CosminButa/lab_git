@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ client.label }} - utilizatori{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ client.label }} <span class="muted">utilizatori</span></h1>
+  <a class="btn" href="{{ url_for('platforms.new_user', key=client.key) }}">Utilizator nou</a>
+</div>
+<form method="get" class="inline search">
+  {{ form.q(placeholder="Caută după utilizator, nume sau e-mail", autofocus=true) }}
+  <button class="btn secondary" type="submit">Caută</button>
+</form>
+{% if error %}<div class="flash danger">{{ error }}</div>{% endif %}
+{% if results %}
+<table>
+  <thead><tr><th>Utilizator</th><th>Nume</th><th>E-mail</th><th>Stare</th></tr></thead>
+  <tbody>
+  {% for u in results %}
+    <tr>
+      <td><a href="{{ url_for('platforms.user_detail', key=client.key, username=u.username) }}">{{ u.username }}</a></td>
+      <td>{{ u.display_name }}</td>
+      <td>{{ u.email }}</td>
+      <td><span class="tag {{ 'on' if u.enabled else 'off' }}">{{ 'activ' if u.enabled else 'dezactivat' }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif query and not error %}
+<p class="muted">Niciun rezultat pentru „{{ query }}”.</p>
+{% elif not error %}
+<p class="muted">Introdu un termen de căutare pentru a lista utilizatorii.</p>
+{% endif %}
+{% endblock %}

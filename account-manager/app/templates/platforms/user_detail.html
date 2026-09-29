@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ client.label }} - {{ user.username }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ user.username }} <span class="tag {{ 'on' if user.enabled else 'off' }}">{{ 'activ' if user.enabled else 'dezactivat' }}</span></h1>
+  <a class="btn ghost" href="{{ url_for('platforms.users', key=client.key) }}">« {{ client.label }}</a>
+</div>
+<div class="grid two">
+  <section class="card">
+    <h2>Detalii</h2>
+    <dl>
+      <dt>Nume</dt><dd>{{ user.display_name or '-' }}</dd>
+      <dt>E-mail</dt><dd>{{ user.email or '-' }}</dd>
+      {% if user.id and user.id != user.username %}<dt>ID</dt><dd class="mono">{{ user.id }}</dd>{% endif %}
+    </dl>
+    <h3>Acțiuni</h3>
+    <div class="actions">
+      {% if 'disable' in client.capabilities %}
+        {% if user.enabled %}
+        <form method="post" action="{{ url_for('platforms.disable_user', key=client.key, username=user.username) }}" onsubmit="return confirm('Dezactivezi contul {{ user.username }}?');">
+          {{ confirm.hidden_tag() }}<button class="btn secondary" type="submit">Dezactivează</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('platforms.enable_user', key=client.key, username=user.username) }}">
+          {{ confirm.hidden_tag() }}<button class="btn secondary" type="submit">Activează</button>
+        </form>
+        {% endif %}
+      {% endif %}
+      {% if 'reset_password' in client.capabilities %}
+      <form method="post" action="{{ url_for('platforms.reset_password', key=client.key, username=user.username) }}" onsubmit="return confirm('Generezi o parolă nouă pentru {{ user.username }}?');">
+        {{ confirm.hidden_tag() }}<button class="btn secondary" type="submit">Resetează parola</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if 'delete' in client.capabilities %}
+    <details class="danger-zone">
+      <summary>Ștergere cont</summary>
+      <form method="post" action="{{ url_for('platforms.delete_user', key=client.key, username=user.username) }}">
+        {{ confirm.hidden_tag() }}
+        <label for="confirm_username">Scrie numele utilizatorului pentru confirmare</label>
+        <input id="confirm_username" name="confirm_username" autocomplete="off" required>
+        <button class="btn danger" type="submit">Șterge definitiv</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Grupuri</h2>
+    {% if user.groups %}
+    <ul class="list">
+      {% for g in user.groups %}
+      <li>
+        <span>{{ g.name }}</span>
+        <form method="post" action="{{ url_for('platforms.remove_group', key=client.key, username=user.username) }}">
+          {{ confirm.hidden_tag() }}
+          <input type="hidden" name="group_id" value="{{ g.id }}">
+          <button class="btn small ghost" type="submit" title="Scoate din grup">✕</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Utilizatorul nu face parte din niciun grup.</p>
+    {% endif %}
+    <h3>Adaugă în grup</h3>
+    {% if group_form.group_id.choices %}
+    <form method="post" action="{{ url_for('platforms.add_group', key=client.key, username=user.username) }}" class="inline">
+      {{ group_form.hidden_tag() }}
+      {{ group_form.group_id() }}
+      <button class="btn" type="submit">Adaugă</button>
+    </form>
+    {% else %}
+    <p class="muted">Nu există alte grupuri disponibile.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

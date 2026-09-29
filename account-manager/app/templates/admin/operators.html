@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Operatori{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Operatori</h1>
+  <a class="btn" href="{{ url_for('admin.new_operator') }}">Operator nou</a>
+</div>
+<table>
+  <thead><tr><th>Utilizator</th><th>Nume</th><th>Rol</th><th>Stare</th><th>Ultima autentificare</th><th></th></tr></thead>
+  <tbody>
+  {% for o in operators %}
+    <tr>
+      <td>{{ o.username }}</td>
+      <td>{{ o.display_name }}</td>
+      <td>{{ 'Administrator' if o.is_admin else 'Operator' }}</td>
+      <td>
+        {% if not o.active %}<span class="tag off">dezactivat</span>
+        {% elif o.is_locked %}<span class="tag warn">blocat</span>
+        {% elif o.must_change_password %}<span class="tag warn">parolă temporară</span>
+        {% else %}<span class="tag on">activ</span>{% endif %}
+      </td>
+      <td>{{ o.last_login_at or '-' }}</td>
+      <td class="row-actions">
+        <a class="btn small secondary" href="{{ url_for('admin.edit_operator', operator_id=o.id) }}">Editează</a>
+        <form method="post" action="{{ url_for('admin.reset_operator_password', operator_id=o.id) }}" onsubmit="return confirm('Resetezi parola pentru {{ o.username }}?');">
+          {{ confirm.hidden_tag() }}
+          <button class="btn small secondary" type="submit">Resetează parola</button>
+        </form>
+        {% if o.id != current_user.id %}
+        <form method="post" action="{{ url_for('admin.delete_operator', operator_id=o.id) }}" onsubmit="return confirm('Ștergi operatorul {{ o.username }}?');">
+          {{ confirm.hidden_tag() }}
+          <button class="btn small danger" type="submit">Șterge</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

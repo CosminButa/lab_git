@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_form_macros.html" import field, checkbox %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{{ title }}</h1>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {% if form.username is defined %}{{ field(form.username, autocomplete="off") }}{% endif %}
+    {{ field(form.display_name) }}
+    {{ field(form.role) }}
+    {{ checkbox(form.active) }}
+    <button class="btn" type="submit">Salvează</button>
+    <a class="btn ghost" href="{{ url_for('admin.operators') }}">Renunță</a>
+  </form>
+</section>
+{% endblock %}

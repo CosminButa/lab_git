@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Platforme</h1>
+<p class="muted">Alege platforma pe care vrei să administrezi conturi. Starea conexiunii se verifică la cerere.</p>
+<div class="grid">
+  {% for p in platforms %}
+  <section class="card">
+    <h2>{{ p.label }}</h2>
+    <p class="muted">{{ p.base_url }}</p>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('platforms.users', key=p.key) }}">Utilizatori</a>
+      <a class="btn secondary" href="{{ url_for('platforms.new_user', key=p.key) }}">Utilizator nou</a>
+      <a class="btn ghost" href="{{ url_for('platforms.health', key=p.key) }}">Test conexiune</a>
+    </div>
+  </section>
+  {% endfor %}
+  {% for key, label in unconfigured.items() %}
+  <section class="card disabled">
+    <h2>{{ label }}</h2>
+    <p class="muted">Neconfigurat. Setează variabilele de mediu {{ key | upper }}_* în Secret.</p>
+  </section>
+  {% endfor %}
+</div>
+{% if not platforms %}
+<div class="flash warning">Nicio platformă nu este configurată. Setează variabilele de mediu pentru Keycloak, Jira sau Nextcloud.</div>
+{% endif %}
+{% endblock %}

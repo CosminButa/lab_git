@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: account-manager
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+# The Secret is intentionally NOT listed here. Create it out of band:
+#   kubectl -n account-manager create secret generic account-manager-secrets --from-env-file=secrets.env
+# or use a SealedSecret / ExternalSecret. See secret.example.yaml.
+images:
+  - name: account-manager
+    newName: registry.example.com/account-manager
+    newTag: "1.0.0"
