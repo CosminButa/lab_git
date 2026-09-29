@@ -7,4 +7,4 @@ spec:
   resources:
     requests:
       storage: 1Gi
-  # storageClassName: <set if your cluster has no default StorageClass>
+  storageClassName: longhorn
