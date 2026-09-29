@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_form_macros.html" import field, checkbox %}
+{% block title %}{{ client.label }} - utilizator nou{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Utilizator nou în {{ client.label }}</h1>
+  <form method="post" autocomplete="off">
+    {{ form.hidden_tag() }}
+    {{ field(form.username, autocomplete="off") }}
+    {{ field(form.email, autocomplete="off") }}
+    {{ field(form.first_name) }}
+    {{ field(form.last_name) }}
+    {{ checkbox(form.generate_password) }}
+    {{ field(form.password, autocomplete="new-password") }}
+    {% if not client.password_required %}
+      <p class="muted">{{ client.label }} permite crearea fără parolă: debifează generarea și lasă câmpul gol.</p>
+    {% endif %}
+    <button class="btn" type="submit">Creează</button>
+    <a class="btn ghost" href="{{ url_for('platforms.users', key=client.key) }}">Renunță</a>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% macro field(f) -%}
+  <div class="field">
+    {{ f.label }}
+    {{ f(**kwargs) }}
+    {% if f.description %}<small>{{ f.description }}</small>{% endif %}
+    {% for e in f.errors %}<small class="error">{{ e }}</small>{% endfor %}
+  </div>
+{%- endmacro %}
+
+{% macro checkbox(f) -%}
+  <div class="field checkbox">
+    {{ f() }} {{ f.label }}
+    {% for e in f.errors %}<small class="error">{{ e }}</small>{% endfor %}
+  </div>
+{%- endmacro %}

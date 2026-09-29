@@ -1,0 +1,17 @@
+# Local test run: docker compose up --build  ->  http://localhost:8000
+services:
+  account-manager:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      SESSION_COOKIE_SECURE: "false"   # plain http on localhost only
+      PROXY_COUNT: "0"
+    volumes:
+      - am-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+volumes:
+  am-data:

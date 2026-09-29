@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_form_macros.html" import field %}
+{% block title %}Autentificare{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Autentificare</h1>
+  <form method="post" autocomplete="off">
+    {{ form.hidden_tag() }}
+    {{ field(form.username, autofocus=true, autocomplete="username") }}
+    {{ field(form.password, autocomplete="current-password") }}
+    <button class="btn" type="submit">Intră</button>
+  </form>
+</section>
+{% endblock %}

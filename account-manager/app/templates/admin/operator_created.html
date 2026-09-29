@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Parolă temporară{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{{ 'Parolă resetată' if reset else 'Operator creat' }}</h1>
+  <p>Transmite operatorului <strong>{{ operator.username }}</strong> parola temporară de mai jos printr-un canal sigur. Va trebui să o schimbe la prima autentificare.</p>
+  <p class="secret">{{ temp_password }}</p>
+  <p class="muted">Parola este afișată o singură dată și nu este stocată în clar.</p>
+  <a class="btn" href="{{ url_for('admin.operators') }}">Înapoi la operatori</a>
+</section>
+{% endblock %}

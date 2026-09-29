@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+tests
+k8s
+.env
+.env.*
+README.md
+requirements-dev.txt
