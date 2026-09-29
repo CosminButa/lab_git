@@ -55,6 +55,12 @@ class Config:
     # Outbound HTTP to the managed platforms
     HTTP_TIMEOUT_SECONDS = _int("HTTP_TIMEOUT_SECONDS", 15)
     HTTP_VERIFY_TLS = _bool("HTTP_VERIFY_TLS", True)
+    # Rate-limit friendliness: minimum gap between two calls to the same platform,
+    # retries on HTTP 429/503 (honouring Retry-After) and group list caching.
+    API_MIN_INTERVAL_MS = _int("API_MIN_INTERVAL_MS", 200)
+    API_MAX_RETRIES = _int("API_MAX_RETRIES", 3)
+    GROUP_CACHE_SECONDS = _int("GROUP_CACHE_SECONDS", 60)
+    SEARCH_RESULT_LIMIT = _int("SEARCH_RESULT_LIMIT", 25)
 
     # Keycloak (Admin REST API, client credentials of a service account)
     KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL")

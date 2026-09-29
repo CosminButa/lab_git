@@ -5,6 +5,7 @@ from flask_login import login_required
 
 from .. import audit
 from ..security import generate_password
+from . import provisioning
 from .base import NotFound, PlatformClient, PlatformError
 from .forms import ConfirmForm, CreateUserForm, GroupForm, SearchForm
 
@@ -27,9 +28,16 @@ def _validate_username(username: str) -> str:
 
 def _group_form(client: PlatformClient, exclude: set[str]) -> GroupForm:
     form = GroupForm()
-    groups = client.list_groups()
+    groups = client.cached_groups()
     form.group_id.choices = [(g.id, g.name) for g in groups if g.id not in exclude]
     return form
+
+
+def _group_choices(client: PlatformClient) -> tuple[list[tuple[str, str]], str | None]:
+    try:
+        return [(g.id, g.name) for g in client.cached_groups()], None
+    except PlatformError as exc:
+        return [], str(exc)
 
 
 @bp.get("/<key>/")
@@ -41,7 +49,7 @@ def users(key: str):
     results, error = [], None
     if request.args.get("q") is not None or key == "keycloak":
         try:
-            results = client.search_users(query)
+            results = client.search_users(query, limit=current_app.config.get("SEARCH_RESULT_LIMIT", 25))
         except PlatformError as exc:
             error = str(exc)
     return render_template("platforms/users.html", client=client, form=form, results=results, error=error, query=query)
@@ -52,6 +60,9 @@ def users(key: str):
 def new_user(key: str):
     client = _client(key)
     form = CreateUserForm()
+    form.groups.choices, groups_error = _group_choices(client)
+    if groups_error:
+        flash(f"Grupurile nu au putut fi încărcate: {groups_error}", "warning")
     if request.method == "GET":
         form.generate_password.data = True
     if form.validate_on_submit():
@@ -65,20 +76,21 @@ def new_user(key: str):
         elif client.password_required:
             flash("Această platformă cere o parolă. Introdu una sau bifează generarea automată.", "danger")
             return render_template("platforms/user_form.html", client=client, form=form), 400
-        try:
-            user = client.create_user(
-                username,
-                (form.email.data or "").strip(),
-                (form.first_name.data or "").strip(),
-                (form.last_name.data or "").strip(),
-                password,
-            )
-        except PlatformError as exc:
-            audit.record(key, "user.create", target=username, outcome="error", details=str(exc))
-            flash(str(exc), "danger")
-            return render_template("platforms/user_form.html", client=client, form=form), 502
-        audit.record(key, "user.create", target=username, details=f"email={user.email}")
-        return render_template("platforms/user_created.html", client=client, user=user, shown_password=shown_password)
+        report = provisioning.provision_user(
+            client,
+            username,
+            (form.email.data or "").strip(),
+            (form.first_name.data or "").strip(),
+            (form.last_name.data or "").strip(),
+            password,
+            list(form.groups.data or []),
+        )
+        audit.record(key, "user.provision", target=username, outcome=report.outcome, details=report.summary())
+        if not report.created:
+            shown_password = None  # user pre-existed or creation failed: no password was set
+        return render_template(
+            "platforms/report.html", client=client, report=report, shown_password=shown_password, title="Creare utilizator"
+        ), (200 if not report.has_errors else 502)
     return render_template("platforms/user_form.html", client=client, form=form)
 
 
@@ -124,18 +136,18 @@ def add_group(key: str, username: str):
     client = _client(key)
     _validate_username(username)
     form = GroupForm()
-    try:
-        form.group_id.choices = [(g.id, g.name) for g in client.list_groups()]
-    except PlatformError as exc:
-        flash(str(exc), "danger")
+    form.group_id.choices, groups_error = _group_choices(client)
+    if groups_error:
+        flash(groups_error, "danger")
         return redirect(url_for("platforms.user_detail", key=key, username=username))
     if not form.validate_on_submit():
         flash("Grup invalid.", "danger")
         return redirect(url_for("platforms.user_detail", key=key, username=username))
-    group_id = form.group_id.data
-    return _action(
-        key, username, "group.add", lambda: client.add_to_group(username, group_id), "Utilizator adăugat în grup.", group=group_id
-    )
+    report = provisioning.assign_group(client, username, form.group_id.data)
+    audit.record(key, "group.add", target=username, outcome=report.outcome, details=report.summary())
+    return render_template(
+        "platforms/report.html", client=client, report=report, shown_password=None, title="Asociere la grup"
+    ), (200 if not report.has_errors else 502)
 
 
 @bp.post("/<key>/users/<username>/groups/remove")

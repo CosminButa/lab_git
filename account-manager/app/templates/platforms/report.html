@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - {{ report.username }}{% endblock %}
+{% block content %}
+<section class="card narrow wide">
+  <h1>{{ title }} în {{ client.label }}</h1>
+  <p class="{{ 'flash danger' if report.has_errors else 'flash success' }}">
+    {% if report.has_errors %}Cel puțin un pas a eșuat. Verifică detaliile de mai jos.
+    {% elif report.created %}Utilizatorul <strong>{{ report.username }}</strong> a fost creat și verificat.
+    {% else %}Toți pașii au fost verificați pentru <strong>{{ report.username }}</strong>.{% endif %}
+  </p>
+  <ol class="steps">
+    {% for s in report.steps %}
+    <li class="step {{ s.status }}">
+      <span class="status">{{ {'ok': '✔', 'exists': '＝', 'skipped': '–', 'error': '✖'}[s.status] }}</span>
+      <span class="name">{{ s.name }}</span>
+      <span class="msg">{{ s.message }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% if shown_password %}
+    <p>Parola inițială, afișată o singură dată. Transmite-o printr-un canal sigur; utilizatorul va trebui să o schimbe.</p>
+    <p class="secret">{{ shown_password }}</p>
+  {% endif %}
+  <div class="actions">
+    {% if report.user %}
+    <a class="btn" href="{{ url_for('platforms.user_detail', key=client.key, username=report.username) }}">Deschide utilizatorul</a>
+    {% endif %}
+    <a class="btn ghost" href="{{ url_for('platforms.new_user', key=client.key) }}">Alt utilizator</a>
+    <a class="btn ghost" href="{{ url_for('platforms.users', key=client.key) }}">Înapoi la listă</a>
+  </div>
+</section>
+{% endblock %}

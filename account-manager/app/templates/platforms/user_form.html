@@ -10,6 +10,7 @@
     {{ field(form.email, autocomplete="off") }}
     {{ field(form.first_name) }}
     {{ field(form.last_name) }}
+    {% if form.groups.choices %}{{ field(form.groups, size=6) }}{% endif %}
     {{ checkbox(form.generate_password) }}
     {{ field(form.password, autocomplete="new-password") }}
     {% if not client.password_required %}

@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, PasswordField, SelectField, StringField
+from wtforms import BooleanField, PasswordField, SelectField, SelectMultipleField, StringField
 from wtforms.validators import DataRequired, Length, Optional, Regexp
 
 USERNAME_RE = r"^[a-zA-Z0-9][a-zA-Z0-9._@-]{1,63}$"
@@ -26,6 +26,8 @@ class CreateUserForm(FlaskForm):
         description="Lasă gol pentru a genera una automat. Va fi afișată o singură dată.",
     )
     generate_password = BooleanField("Generează parolă", default=True)
+    groups = SelectMultipleField("Grupuri", validators=[Optional()], validate_choice=True,
+                                 description="Ține Ctrl/Cmd apăsat pentru selecție multiplă.")
 
 
 class GroupForm(FlaskForm):

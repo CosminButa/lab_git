@@ -21,7 +21,7 @@ def m():
 # ---------------- Keycloak ----------------
 def _kc(m):
     m.post(f"{KC}/realms/r/protocol/openid-connect/token", json={"access_token": "tok", "expires_in": 300})
-    return KeycloakClient(KC, realm="r", client_id="c", client_secret="s")
+    return KeycloakClient(KC, realm="r", client_id="c", client_secret="s", min_interval=0)
 
 
 def test_keycloak_token_and_search(m):
@@ -69,7 +69,7 @@ def test_keycloak_nested_groups_are_flattened(m):
 
 def test_keycloak_bad_credentials(m):
     m.post(f"{KC}/realms/r/protocol/openid-connect/token", status_code=401, json={"error": "unauthorized_client"})
-    c = KeycloakClient(KC, realm="r", client_id="c", client_secret="s")
+    c = KeycloakClient(KC, realm="r", client_id="c", client_secret="s", min_interval=0)
     with pytest.raises(PlatformError, match="client id/secret"):
         c.health()
 
@@ -83,7 +83,7 @@ def test_keycloak_missing_user(m):
 
 # ---------------- Jira ----------------
 def test_jira_get_user_and_groups(m):
-    c = JiraClient(JIRA, token="pat")
+    c = JiraClient(JIRA, token="pat", min_interval=0)
     m.get(
         f"{JIRA}/rest/api/2/user",
         json={"key": "JIRAUSER1", "name": "jdoe", "emailAddress": "j@x", "displayName": "John", "active": True, "groups": {"items": [{"name": "jira-users"}]}},
@@ -100,7 +100,7 @@ def test_jira_get_user_and_groups(m):
 
 
 def test_jira_create_without_password_sends_notification(m):
-    c = JiraClient(JIRA, token="pat")
+    c = JiraClient(JIRA, token="pat", min_interval=0)
     m.post(f"{JIRA}/rest/api/2/user", status_code=201, json={})
     m.get(f"{JIRA}/rest/api/2/user", json={"name": "jdoe", "active": True})
     c.create_user("jdoe", "j@x", "John", "Doe", None)
@@ -109,21 +109,21 @@ def test_jira_create_without_password_sends_notification(m):
 
 
 def test_jira_error_message_extracted(m):
-    c = JiraClient(JIRA, token="pat")
+    c = JiraClient(JIRA, token="pat", min_interval=0)
     m.post(f"{JIRA}/rest/api/2/user", status_code=400, json={"errorMessages": [], "errors": {"username": "A user with that username already exists."}})
     with pytest.raises(PlatformError, match="already exists"):
         c.create_user("jdoe", "j@x", "", "", "x")
 
 
 def test_jira_forbidden(m):
-    c = JiraClient(JIRA, token="pat")
+    c = JiraClient(JIRA, token="pat", min_interval=0)
     m.get(f"{JIRA}/rest/api/2/myself", status_code=403)
     with pytest.raises(PlatformError, match="acces refuzat"):
         c.health()
 
 
 def test_jira_groups_picker(m):
-    c = JiraClient(JIRA, token="pat")
+    c = JiraClient(JIRA, token="pat", min_interval=0)
     m.get(f"{JIRA}/rest/api/2/groups/picker", json={"groups": [{"name": "a"}, {"name": "b"}]})
     assert [g.id for g in c.list_groups()] == ["a", "b"]
 
@@ -134,7 +134,7 @@ def _ocs(data, code=100, message="OK"):
 
 
 def test_nextcloud_get_user(m):
-    c = NextcloudClient(NC, username="admin", app_password="app-pw")
+    c = NextcloudClient(NC, username="admin", app_password="app-pw", min_interval=0)
     m.get(f"{NC}/ocs/v1.php/cloud/users/jdoe", json=_ocs({"id": "jdoe", "email": "j@x", "displayname": "John", "enabled": True, "groups": ["admin", "dev"]}))
     user = c.get_user("jdoe")
     assert [g.id for g in user.groups] == ["admin", "dev"]
@@ -144,7 +144,7 @@ def test_nextcloud_get_user(m):
 
 
 def test_nextcloud_search_fetches_details(m):
-    c = NextcloudClient(NC, username="admin", app_password="app-pw")
+    c = NextcloudClient(NC, username="admin", app_password="app-pw", min_interval=0)
     m.get(f"{NC}/ocs/v1.php/cloud/users?search=j&limit=50&format=json", json=_ocs({"users": ["jdoe"]}))
     m.get(f"{NC}/ocs/v1.php/cloud/users/jdoe", json=_ocs({"id": "jdoe", "enabled": False}))
     users = c.search_users("j")
@@ -152,7 +152,7 @@ def test_nextcloud_search_fetches_details(m):
 
 
 def test_nextcloud_ocs_failure_code(m):
-    c = NextcloudClient(NC, username="admin", app_password="app-pw")
+    c = NextcloudClient(NC, username="admin", app_password="app-pw", min_interval=0)
     m.post(f"{NC}/ocs/v1.php/cloud/users", json=_ocs([], code=102, message="User already exists"))
     with pytest.raises(PlatformError, match="User already exists"):
         c.create_user("jdoe", "", "", "", "Secret12345!")
@@ -162,7 +162,7 @@ def test_nextcloud_ocs_failure_code(m):
 
 
 def test_nextcloud_group_and_enable_ops(m):
-    c = NextcloudClient(NC, username="admin", app_password="app-pw")
+    c = NextcloudClient(NC, username="admin", app_password="app-pw", min_interval=0)
     m.post(f"{NC}/ocs/v1.php/cloud/users/jdoe/groups", json=_ocs([]))
     c.add_to_group("jdoe", "dev")
     assert m.request_history[-1].text == "groupid=dev"
@@ -173,3 +173,37 @@ def test_nextcloud_group_and_enable_ops(m):
     m.put(f"{NC}/ocs/v1.php/cloud/users/jdoe", json=_ocs([]))
     c.reset_password("jdoe", "NewSecret123!")
     assert "key=password" in m.request_history[-1].text
+
+
+# ---------------- Rate-limit behaviour ----------------
+def test_retry_on_429_honours_retry_after(m, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("app.platforms.base.time.sleep", lambda s: sleeps.append(s))
+    c = JiraClient(JIRA, token="pat", min_interval=0)
+    m.get(
+        f"{JIRA}/rest/api/2/myself",
+        [{"status_code": 429, "headers": {"Retry-After": "2"}}, {"status_code": 503}, {"status_code": 200, "json": {}}],
+    )
+    c.health()
+    assert len(m.request_history) == 3
+    assert sleeps[0] == 2.0 and sleeps[1] > 0
+
+
+def test_gives_up_after_max_retries(m, monkeypatch):
+    monkeypatch.setattr("app.platforms.base.time.sleep", lambda s: None)
+    c = JiraClient(JIRA, token="pat", min_interval=0, max_retries=2)
+    m.get(f"{JIRA}/rest/api/2/myself", status_code=429)
+    with pytest.raises(PlatformError, match="rate limit"):
+        c.health()
+    assert len(m.request_history) == 3
+
+
+def test_throttle_spaces_requests(m):
+    import time
+
+    c = JiraClient(JIRA, token="pat", min_interval=0.05)
+    m.get(f"{JIRA}/rest/api/2/myself", json={})
+    start = time.monotonic()
+    for _ in range(3):
+        c.health()
+    assert time.monotonic() - start >= 0.1

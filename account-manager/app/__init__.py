@@ -3,6 +3,7 @@ import os
 
 from flask import Flask, redirect, render_template, request, url_for
 from flask_login import current_user
+from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
@@ -116,5 +117,10 @@ def _bootstrap_admin(app: Flask) -> None:
     admin = Operator(username=username, display_name=username, role=ROLE_ADMIN, must_change_password=True)
     admin.set_password(password)
     db.session.add(admin)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Several gunicorn workers start at once; another one won the race. Nothing to do.
+        db.session.rollback()
+        return
     app.logger.warning("Bootstrap admin '%s' created; the password must be changed at first login.", username)

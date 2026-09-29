@@ -16,10 +16,13 @@ class FakeClient(PlatformClient):
     password_required = True
 
     def __init__(self):
-        super().__init__("https://fake.example")
+        super().__init__("https://fake.example", min_interval=0)
         self.users: dict[str, PlatformUser] = {}
         self.groups = [Group("g1", "Group One"), Group("g2", "Group Two")]
         self.fail_next: str | None = None
+        self.fail_after_health: str | None = None
+        self.silent_group_add = False
+        self.last_password = None
 
     def _maybe_fail(self):
         if self.fail_next:
@@ -28,6 +31,8 @@ class FakeClient(PlatformClient):
 
     def health(self):
         self._maybe_fail()
+        if self.fail_after_health:
+            self.fail_next, self.fail_after_health = self.fail_after_health, None
 
     def search_users(self, query, limit=50):
         self._maybe_fail()
@@ -37,7 +42,8 @@ class FakeClient(PlatformClient):
         self._maybe_fail()
         if username not in self.users:
             raise NotFound("Fake: nu există")
-        return self.users[username]
+        user = self.users[username]
+        return PlatformUser(user.username, user.email, user.display_name, user.enabled, user.id, list(user.groups))
 
     def create_user(self, username, email, first_name, last_name, password):
         self._maybe_fail()
@@ -50,7 +56,7 @@ class FakeClient(PlatformClient):
 
     def set_enabled(self, username, enabled):
         self._maybe_fail()
-        self.get_user(username).enabled = enabled
+        self.users[username].enabled = enabled
 
     def delete_user(self, username):
         self._maybe_fail()
@@ -67,12 +73,14 @@ class FakeClient(PlatformClient):
 
     def add_to_group(self, username, group_id):
         self._maybe_fail()
+        if self.silent_group_add:
+            return
         group = next(g for g in self.groups if g.id == group_id)
-        self.get_user(username).groups.append(group)
+        self.users[username].groups.append(group)
 
     def remove_from_group(self, username, group_id):
         self._maybe_fail()
-        user = self.get_user(username)
+        user = self.users[username]
         user.groups = [g for g in user.groups if g.id != group_id]
 
 

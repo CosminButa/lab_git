@@ -83,3 +83,25 @@ def test_security_headers_present(client):
 
 def test_healthz_is_public(client):
     assert client.get("/healthz").json == {"status": "ok"}
+
+
+def test_bootstrap_admin_is_idempotent_across_workers(tmp_path):
+    """Two app instances (like two gunicorn workers) bootstrapping the same DB must not crash."""
+    from app import create_app
+    from app.config import TestConfig
+    from app.models import Operator
+
+    class Cfg(TestConfig):
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path}/boot.db"
+        BOOTSTRAP_ADMIN_USERNAME = "boot"
+        BOOTSTRAP_ADMIN_PASSWORD = "BootstrapPassword123!"
+
+    a1 = create_app(Cfg)
+    # Simulate the race: second instance runs the bootstrap after the first committed.
+    a2 = create_app(Cfg)
+    with a2.app_context():
+        from app import _bootstrap_admin
+        _bootstrap_admin(a2)
+        assert Operator.query.filter_by(username="boot").count() == 1
+    with a1.app_context():
+        assert Operator.query.filter_by(username="boot").one().must_change_password

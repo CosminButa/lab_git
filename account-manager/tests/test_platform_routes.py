@@ -14,11 +14,11 @@ def test_create_user_generates_password_and_audits(app, operator_client, fake):
     )
     assert r.status_code == 200
     page = r.get_data(as_text=True)
-    assert "Utilizator creat" in page
+    assert "a fost creat și verificat" in page
     assert html.escape(fake.last_password) in page
     assert len(fake.last_password) >= 16
     with app.app_context():
-        entry = AuditLog.query.filter_by(platform="fake", action="user.create").one()
+        entry = AuditLog.query.filter_by(platform="fake", action="user.provision").one()
         assert entry.operator == "op" and entry.target == "jdoe" and entry.outcome == "ok"
         assert fake.last_password not in entry.details
 
@@ -33,9 +33,19 @@ def test_create_user_platform_error_is_shown_and_audited(app, operator_client, f
     fake.fail_next = "Fake: platforma e jos"
     r = operator_client.post("/p/fake/users/new", data={"username": "jdoe", "generate_password": "y"})
     assert r.status_code == 502
-    assert "platforma e jos" in r.get_data(as_text=True)
+    page = r.get_data(as_text=True)
+    assert "platforma e jos" in page and 'class="secret"' not in page
     with app.app_context():
-        assert AuditLog.query.filter_by(action="user.create", outcome="error").count() == 1
+        assert AuditLog.query.filter_by(action="user.provision", outcome="error").count() == 1
+
+
+def test_create_with_groups_and_existing_user(app, operator_client, fake):
+    fake.create_user("jdoe", "", "", "", "x")
+    r = operator_client.post("/p/fake/users/new", data={"username": "jdoe", "generate_password": "y", "groups": ["g1", "g2"]})
+    assert r.status_code == 200
+    page = r.get_data(as_text=True)
+    assert "există deja" in page and 'class="secret"' not in page
+    assert [g.id for g in fake.users["jdoe"].groups] == ["g1", "g2"]
 
 
 def test_username_validation(operator_client):
@@ -46,8 +56,8 @@ def test_username_validation(operator_client):
 
 def test_group_membership_flow(operator_client, fake):
     fake.create_user("jdoe", "j@example.com", "John", "Doe", "Password12345!")
-    r = operator_client.post("/p/fake/users/jdoe/groups/add", data={"group_id": "g1"}, follow_redirects=True)
-    assert "adăugat în grup" in r.get_data(as_text=True)
+    r = operator_client.post("/p/fake/users/jdoe/groups/add", data={"group_id": "g1"})
+    assert r.status_code == 200 and "adăugat și verificat" in r.get_data(as_text=True)
     assert [g.id for g in fake.users["jdoe"].groups] == ["g1"]
     detail = operator_client.get("/p/fake/users/jdoe").get_data(as_text=True)
     assert "Group One" in detail
@@ -61,6 +71,12 @@ def test_add_to_unknown_group_rejected(operator_client, fake):
     fake.create_user("jdoe", "", "", "", "Password12345!")
     r = operator_client.post("/p/fake/users/jdoe/groups/add", data={"group_id": "nope"}, follow_redirects=True)
     assert "Grup invalid" in r.get_data(as_text=True)
+
+
+def test_add_group_to_missing_user_reports_error(operator_client):
+    r = operator_client.post("/p/fake/users/ghost/groups/add", data={"group_id": "g1"})
+    assert r.status_code == 502
+    assert "nu există" in r.get_data(as_text=True)
 
 
 def test_disable_enable_reset_delete(operator_client, fake):

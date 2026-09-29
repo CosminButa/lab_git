@@ -27,7 +27,13 @@ class Registry:
 
 def build_registry(config) -> Registry:
     registry = Registry()
-    http = {"timeout": config.get("HTTP_TIMEOUT_SECONDS", 15), "verify": config.get("HTTP_VERIFY_TLS", True)}
+    http = {
+        "timeout": config.get("HTTP_TIMEOUT_SECONDS", 15),
+        "verify": config.get("HTTP_VERIFY_TLS", True),
+        "min_interval": config.get("API_MIN_INTERVAL_MS", 200) / 1000,
+        "max_retries": config.get("API_MAX_RETRIES", 3),
+        "group_cache_seconds": config.get("GROUP_CACHE_SECONDS", 60),
+    }
 
     if config.get("KEYCLOAK_URL") and config.get("KEYCLOAK_REALM") and config.get("KEYCLOAK_CLIENT_ID") and config.get("KEYCLOAK_CLIENT_SECRET"):
         registry.register(

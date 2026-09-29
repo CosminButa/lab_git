@@ -83,3 +83,15 @@ details.danger-zone form { margin-top: .75rem; display: grid; gap: .5rem; }
   .topbar { flex-wrap: wrap; height: auto; padding: .75rem 1rem; }
   .row-actions { flex-wrap: wrap; justify-content: flex-start; }
 }
+.card.narrow.wide { max-width: 720px; }
+.steps { list-style: none; padding: 0; margin: 0 0 1rem; }
+.step { display: grid; grid-template-columns: 1.5rem 11rem 1fr; gap: .5rem; padding: .5rem 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+.step:last-child { border-bottom: 0; }
+.step .status { font-weight: 700; text-align: center; }
+.step .name { font-weight: 600; }
+.step.ok .status { color: var(--ok); }
+.step.exists .status { color: var(--warn); }
+.step.skipped .status { color: var(--muted); }
+.step.error .status { color: var(--danger); }
+.step.error .msg { color: var(--danger); }
+@media (max-width: 720px) { .step { grid-template-columns: 1.5rem 1fr; } .step .msg { grid-column: 2; } }
