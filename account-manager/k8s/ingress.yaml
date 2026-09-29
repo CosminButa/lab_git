@@ -3,7 +3,7 @@ kind: Ingress
 metadata:
   name: account-manager
   annotations:
-    # cert-manager.io/cluster-issuer: letsencrypt   # uncomment if you use cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt   # numele ClusterIssuer-ului tău: kubectl get clusterissuer
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     # Optional: restrict who can reach the UI at all

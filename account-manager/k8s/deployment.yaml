@@ -17,6 +17,8 @@ spec:
         app: account-manager
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: nexus-registry   # kubectl -n account-manager create secret docker-registry nexus-registry ...
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

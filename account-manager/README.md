@@ -155,12 +155,15 @@ docker push registry.example.com/account-manager:1.0.0
 # 2. adaptează manifestele (o singură dată)
 #    k8s/kustomization.yaml  -> images.newName / newTag
 #    k8s/configmap.yaml      -> KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, JIRA_URL, NEXTCLOUD_URL, NEXTCLOUD_USER
-#    k8s/ingress.yaml        -> host, ingressClassName, TLS (cert-manager sau secret propriu)
+#    k8s/ingress.yaml        -> host, ingressClassName, anotarea cert-manager.io/cluster-issuer (sau secret TLS propriu)
 #    k8s/networkpolicy.yaml  -> namespace-ul ingress controller-ului tău
 #    k8s/pvc.yaml            -> storageClassName dacă nu ai una implicită
 
-# 3. namespace + secret (secretele nu trec niciodată prin git)
+# 3. namespace + secrete (secretele nu trec niciodată prin git)
 kubectl create namespace account-manager
+#    registry privat (Nexus, Harbor...): pull secret, numele e referit în deployment.yaml
+kubectl -n account-manager create secret docker-registry nexus-registry \
+  --docker-server=nexus.example.com --docker-username='<user>' --docker-password='<parola sau token>'
 kubectl -n account-manager create secret generic account-manager-secrets \
   --from-literal=SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(32))')" \
   --from-literal=BOOTSTRAP_ADMIN_USERNAME=admin \
