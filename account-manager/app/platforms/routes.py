@@ -4,40 +4,38 @@ from flask import Blueprint, abort, current_app, flash, redirect, render_templat
 from flask_login import login_required
 
 from .. import audit
-from ..security import generate_password
+from ..forms import ConfirmForm
+from ..security import USERNAME_RE, generate_password
 from . import provisioning
 from .base import NotFound, PlatformClient, PlatformError
-from .forms import ConfirmForm, CreateUserForm, GroupForm, SearchForm
+from .forms import CreateUserForm, GroupForm, ImportForm, SearchForm
 
 bp = Blueprint("platforms", __name__, url_prefix="/p")
 
 
 def _client(key: str) -> PlatformClient:
-    client = current_app.extensions["platforms"].get(key)
-    if client is None:
-        abort(404)
-    return client
+    return current_app.extensions["platforms"].get(key) or abort(404)
 
 
-def _validate_username(username: str) -> str:
-    """Usernames come from URLs; keep them to a safe character set before hitting an API."""
-    if not username or len(username) > 64 or not all(c.isalnum() or c in "._@-" for c in username):
-        abort(400)
-    return username
+def _checked(username: str) -> str:
+    """Usernames come from URLs: enforce the safe character set before they reach an API."""
+    return username if USERNAME_RE.match(username) else abort(400)
 
 
-def _group_form(client: PlatformClient, exclude: set[str]) -> GroupForm:
-    form = GroupForm()
-    groups = client.cached_groups()
-    form.group_id.choices = [(g.id, g.name) for g in groups if g.id not in exclude]
-    return form
-
-
-def _group_choices(client: PlatformClient) -> tuple[list[tuple[str, str]], str | None]:
+def _group_choices(client: PlatformClient, exclude: set[str] = frozenset()) -> tuple[list[tuple[str, str]], str | None]:
     try:
-        return [(g.id, g.name) for g in client.cached_groups()], None
+        return [(g.id, g.name) for g in client.cached_groups() if g.id not in exclude], None
     except PlatformError as exc:
         return [], str(exc)
+
+
+def _detail(key: str, username: str):
+    return redirect(url_for("platforms.user_detail", key=key, username=username))
+
+
+def _render_report(client: PlatformClient, action: str, report: provisioning.Report, title: str):
+    audit.record(client.key, action, target=report.username, outcome=report.outcome, details=report.summary())
+    return render_template("platforms/report.html", client=client, report=report, title=title), (502 if report.has_errors else 200)
 
 
 @bp.get("/<key>/")
@@ -47,9 +45,9 @@ def users(key: str):
     form = SearchForm(request.args)
     query = (form.q.data or "").strip()
     results, error = [], None
-    if request.args.get("q") is not None or key == "keycloak":
+    if "q" in request.args:
         try:
-            results = client.search_users(query, limit=current_app.config.get("SEARCH_RESULT_LIMIT", 25))
+            results = client.search_users(query, limit=current_app.config["SEARCH_RESULT_LIMIT"])
         except PlatformError as exc:
             error = str(exc)
     return render_template("platforms/users.html", client=client, form=form, results=results, error=error, query=query)
@@ -63,91 +61,86 @@ def new_user(key: str):
     form.groups.choices, groups_error = _group_choices(client)
     if groups_error:
         flash(f"Grupurile nu au putut fi încărcate: {groups_error}", "warning")
-    if request.method == "GET":
-        form.generate_password.data = True
-    if form.validate_on_submit():
-        username = form.username.data.strip()
-        password: str | None = None
-        shown_password: str | None = None
-        if form.generate_password.data:
-            password = shown_password = generate_password()
-        elif form.password.data:
-            password = form.password.data
-        elif client.password_required:
-            flash("Această platformă cere o parolă. Introdu una sau bifează generarea automată.", "danger")
-            return render_template("platforms/user_form.html", client=client, form=form), 400
-        report = provisioning.provision_user(
-            client,
-            username,
-            (form.email.data or "").strip(),
-            (form.first_name.data or "").strip(),
-            (form.last_name.data or "").strip(),
-            password,
-            list(form.groups.data or []),
-        )
-        audit.record(key, "user.provision", target=username, outcome=report.outcome, details=report.summary())
-        if not report.created:
-            shown_password = None  # user pre-existed or creation failed: no password was set
-        return render_template(
-            "platforms/report.html", client=client, report=report, shown_password=shown_password, title="Creare utilizator"
-        ), (200 if not report.has_errors else 502)
-    return render_template("platforms/user_form.html", client=client, form=form)
+    if not form.validate_on_submit():
+        return render_template("platforms/user_form.html", client=client, form=form)
+    password = generate_password() if form.generate_password.data else form.password.data or None
+    if password is None and client.password_required:
+        flash("Această platformă cere o parolă. Introdu una sau bifează generarea automată.", "danger")
+        return render_template("platforms/user_form.html", client=client, form=form), 400
+    report = provisioning.provision_user(
+        client, form.username.data, form.email.data, form.first_name.data, form.last_name.data, password, form.groups.data
+    )
+    if not form.generate_password.data:
+        report.password = None  # operator typed it; nothing to reveal
+    return _render_report(client, "user.provision", report, "Creare utilizator")
+
+
+@bp.route("/<key>/users/import", methods=["GET", "POST"])
+@login_required
+def import_users(key: str):
+    client = _client(key)
+    form = ImportForm()
+    if not form.validate_on_submit():
+        return render_template("platforms/import.html", client=client, form=form, columns=provisioning.CSV_COLUMNS)
+    if not form.generate_password.data and client.password_required:
+        flash(f"{client.label} cere o parolă la creare; bifează generarea de parole.", "danger")
+        return render_template("platforms/import.html", client=client, form=form, columns=provisioning.CSV_COLUMNS), 400
+    try:
+        text = form.file.data.read().decode("utf-8")
+    except UnicodeDecodeError:
+        flash("Fișierul trebuie să fie codificat UTF-8.", "danger")
+        return render_template("platforms/import.html", client=client, form=form, columns=provisioning.CSV_COLUMNS), 400
+    rows = provisioning.parse_csv(text, current_app.config["IMPORT_MAX_ROWS"])
+    reports = provisioning.import_rows(client, rows, form.generate_password.data)
+    for report in reports:
+        audit.record(key, "user.import", target=report.username, outcome=report.outcome, details=report.summary())
+    return render_template("platforms/import_result.html", client=client, reports=reports)
 
 
 @bp.get("/<key>/users/<username>")
 @login_required
 def user_detail(key: str, username: str):
     client = _client(key)
-    _validate_username(username)
     try:
-        user = client.get_user(username)
-        group_form = _group_form(client, {g.id for g in user.groups})
-    except NotFound as exc:
-        flash(str(exc), "warning")
-        return redirect(url_for("platforms.users", key=key))
+        user = client.get_user(_checked(username))
     except PlatformError as exc:
-        flash(str(exc), "danger")
+        flash(str(exc), "warning" if isinstance(exc, NotFound) else "danger")
         return redirect(url_for("platforms.users", key=key))
-    return render_template(
-        "platforms/user_detail.html", client=client, user=user, group_form=group_form, confirm=ConfirmForm()
-    )
+    group_form = GroupForm()
+    group_form.group_id.choices, groups_error = _group_choices(client, {g.id for g in user.groups})
+    if groups_error:
+        flash(groups_error, "warning")
+    return render_template("platforms/user_detail.html", client=client, user=user, group_form=group_form, confirm=ConfirmForm())
 
 
-def _action(key: str, username: str, action: str, fn, success_message: str, **audit_details):
-    """Run a state-changing platform call with CSRF check, audit trail and consistent flashing."""
-    _validate_username(username)
+def _action(client: PlatformClient, username: str, action: str, fn, success_message: str, success_url: str | None = None, **details):
+    """Run a state-changing call with CSRF check and audit trail, then return to the user page."""
+    _checked(username)
     if not ConfirmForm().validate_on_submit():
         abort(400)
-    details = " ".join(f"{k}={v}" for k, v in audit_details.items())
+    detail = " ".join(f"{k}={v}" for k, v in details.items())
     try:
         fn()
     except PlatformError as exc:
-        audit.record(key, action, target=username, outcome="error", details=f"{details} {exc}".strip())
+        audit.record(client.key, action, target=username, outcome="error", details=f"{detail} {exc}".strip())
         flash(str(exc), "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    audit.record(key, action, target=username, details=details)
+        return _detail(client.key, username)
+    audit.record(client.key, action, target=username, details=detail)
     flash(success_message, "success")
-    return redirect(url_for("platforms.user_detail", key=key, username=username))
+    return redirect(success_url) if success_url else _detail(client.key, username)
 
 
 @bp.post("/<key>/users/<username>/groups/add")
 @login_required
 def add_group(key: str, username: str):
     client = _client(key)
-    _validate_username(username)
     form = GroupForm()
     form.group_id.choices, groups_error = _group_choices(client)
-    if groups_error:
-        flash(groups_error, "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    if not form.validate_on_submit():
-        flash("Grup invalid.", "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    report = provisioning.assign_group(client, username, form.group_id.data)
-    audit.record(key, "group.add", target=username, outcome=report.outcome, details=report.summary())
-    return render_template(
-        "platforms/report.html", client=client, report=report, shown_password=None, title="Asociere la grup"
-    ), (200 if not report.has_errors else 502)
+    if groups_error or not form.validate_on_submit():
+        flash(groups_error or "Grup invalid.", "danger")
+        return _detail(key, _checked(username))
+    report = provisioning.assign_group(client, _checked(username), form.group_id.data)
+    return _render_report(client, "group.add", report, "Asociere la grup")
 
 
 @bp.post("/<key>/users/<username>/groups/remove")
@@ -155,72 +148,53 @@ def add_group(key: str, username: str):
 def remove_group(key: str, username: str):
     client = _client(key)
     group_id = request.form.get("group_id", "")
-    if not group_id or len(group_id) > 255:
+    if not 0 < len(group_id) <= 255:
         abort(400)
-    return _action(
-        key, username, "group.remove", lambda: client.remove_from_group(username, group_id), "Utilizator scos din grup.", group=group_id
-    )
+    return _action(client, username, "group.remove", lambda: client.remove_from_group(username, group_id), "Utilizator scos din grup.", group=group_id)
 
 
 @bp.post("/<key>/users/<username>/enable")
 @login_required
 def enable_user(key: str, username: str):
     client = _client(key)
-    return _action(key, username, "user.enable", lambda: client.set_enabled(username, True), "Cont activat.")
+    return _action(client, username, "user.enable", lambda: client.set_enabled(username, True), "Cont activat.")
 
 
 @bp.post("/<key>/users/<username>/disable")
 @login_required
 def disable_user(key: str, username: str):
     client = _client(key)
-    return _action(key, username, "user.disable", lambda: client.set_enabled(username, False), "Cont dezactivat.")
+    return _action(client, username, "user.disable", lambda: client.set_enabled(username, False), "Cont dezactivat.")
 
 
 @bp.post("/<key>/users/<username>/reset-password")
 @login_required
 def reset_password(key: str, username: str):
     client = _client(key)
-    _validate_username(username)
     if not ConfirmForm().validate_on_submit():
         abort(400)
-    new_password = generate_password()
-    try:
-        client.reset_password(username, new_password)
-    except PlatformError as exc:
-        audit.record(key, "user.reset_password", target=username, outcome="error", details=str(exc))
-        flash(str(exc), "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    audit.record(key, "user.reset_password", target=username)
-    return render_template("platforms/password_reset.html", client=client, username=username, shown_password=new_password)
+    report = provisioning.reset_password(client, _checked(username))
+    return _render_report(client, "user.reset_password", report, "Resetare parolă")
 
 
 @bp.post("/<key>/users/<username>/delete")
 @login_required
 def delete_user(key: str, username: str):
     client = _client(key)
-    _validate_username(username)
-    if not ConfirmForm().validate_on_submit():
-        abort(400)
-    if request.form.get("confirm_username", "") != username:
+    if request.form.get("confirm_username") != username:
         flash("Confirmarea nu corespunde cu numele utilizatorului. Nimic nu a fost șters.", "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    try:
-        client.delete_user(username)
-    except PlatformError as exc:
-        audit.record(key, "user.delete", target=username, outcome="error", details=str(exc))
-        flash(str(exc), "danger")
-        return redirect(url_for("platforms.user_detail", key=key, username=username))
-    audit.record(key, "user.delete", target=username)
-    flash(f"Utilizatorul {username} a fost șters din {client.label}.", "success")
-    return redirect(url_for("platforms.users", key=key))
+        return _detail(key, _checked(username))
+    return _action(
+        client, username, "user.delete", lambda: client.delete_user(username),
+        f"Utilizatorul {username} a fost șters din {client.label}.", success_url=url_for("platforms.users", key=key),
+    )
 
 
 @bp.get("/<key>/health")
 @login_required
 def health(key: str):
-    client = _client(key)
     try:
-        client.health()
+        _client(key).health()
     except PlatformError as exc:
         return {"platform": key, "ok": False, "error": str(exc)}, 502
     return {"platform": key, "ok": True}

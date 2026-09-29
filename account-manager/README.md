@@ -9,7 +9,8 @@ Aplicație Flask, simplă și securizată, pentru crearea și administrarea cont
 | --- | --- |
 | Platforme (Keycloak / Jira / Nextcloud) | căutare utilizatori, creare utilizator cu asociere la grupuri, activare/dezactivare, resetare parolă, ștergere (cu confirmare), adăugare/scoatere din grupuri, test conexiune |
 | Verificare pas cu pas | fiecare creare/asociere produce un raport: conexiune, utilizator există deja / creat și verificat, grup inexistent / deja membru / adăugat și verificat |
-| CLI `flask provision-user` | același flux din linie de comandă, cu exit code 0/1, pentru scripturi |
+| Import CSV | creare în masă din fișier CSV, cu grupuri opționale per rând; fiecare rând verificat pas cu pas, rezultat în tabel, parolele afișate o singură dată |
+| CLI `flask provision-user`, `flask import-users` | aceleași fluxuri din linie de comandă, cu exit code 0/1, pentru scripturi |
 | Operatori (doar admin) | creare, editare rol/stare, resetare parolă, ștergere; parola temporară e afișată o singură dată |
 | Audit (doar admin) | fiecare acțiune: cine, ce, pe ce platformă, țintă, rezultat |
 | Cont | schimbare parolă proprie |
@@ -40,6 +41,30 @@ flask --app wsgi provision-user jira ion.popescu --email ion@example.com \
 # [OK]     Grup jira-users: 'ion.popescu' a fost adăugat și verificat în 'jira-users'.
 # [EROARE] Grup dev-team: Grupul 'dev-team' nu există în Jira.
 # Rezultat: EROARE
+```
+
+## Import CSV
+
+Din pagina platformei, **Import CSV**. Fișier UTF-8, separator `,` sau `;`, cu antetul:
+
+```csv
+username,email,first_name,last_name,groups
+ion.popescu,ion@example.com,Ion,Popescu,jira-users|dev-team
+maria.ionescu,maria@example.com,Maria,Ionescu,
+```
+
+- Doar `username` este obligatoriu; celelalte coloane pot lipsi.
+- Mai multe grupuri în aceeași celulă se separă cu `|`. Celulă goală înseamnă fără asociere.
+- Utilizatorii existenți nu sunt recreați și nu li se schimbă parola; li se adaugă doar grupurile lipsă.
+- Rândurile invalide (utilizator cu caractere nepermise, e-mail greșit, duplicat în fișier) sunt raportate fără a opri importul celorlalte.
+- Fiecare rând trece prin aceiași pași de verificare ca la crearea individuală; rezultatul apare într-un tabel, cu parola generată afișată o singură dată. Fiecare rând este înregistrat în audit.
+- Limita implicită este 500 de rânduri (`IMPORT_MAX_ROWS`); throttling-ul către platformă se aplică automat.
+
+Din linie de comandă:
+
+```sh
+flask --app wsgi import-users jira utilizatori.csv            # exit code 1 dacă orice rând a eșuat
+flask --app wsgi import-users keycloak utilizatori.csv --no-password
 ```
 
 ## Protecție la rate limit-ul platformelor
@@ -193,9 +218,9 @@ account-manager/
 │   │   ├── keycloak.py      # Admin REST API
 │   │   ├── jira.py          # REST API v2 (Data Center)
 │   │   ├── nextcloud.py     # OCS Provisioning API
-│   │   ├── provisioning.py  # fluxuri cu pași de verificare (Report / Step)
+│   │   ├── provisioning.py  # fluxuri cu pași de verificare (Report / Step) + import CSV
 │   │   └── routes.py        # UI generic pentru toate platformele
-│   ├── cli.py               # flask create-admin, flask provision-user
+│   ├── cli.py               # flask create-admin, provision-user, import-users
 │   └── templates/, static/
 ├── tests/                   # pytest, API-uri mock-uite cu requests-mock
 ├── k8s/                     # manifeste kustomize

@@ -6,7 +6,7 @@
   <h1>{{ title }}</h1>
   <form method="post">
     {{ form.hidden_tag() }}
-    {% if form.username is defined %}{{ field(form.username, autocomplete="off") }}{% endif %}
+    {% if form.username %}{{ field(form.username, autocomplete="off") }}{% endif %}
     {{ field(form.display_name) }}
     {{ field(form.role) }}
     {{ checkbox(form.active) }}

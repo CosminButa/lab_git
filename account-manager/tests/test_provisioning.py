@@ -1,5 +1,5 @@
 from app.platforms import provisioning
-from app.platforms.base import PlatformUser
+
 from app.platforms.provisioning import ERROR, EXISTS, OK, SKIPPED
 
 

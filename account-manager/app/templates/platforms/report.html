@@ -17,9 +17,9 @@
     </li>
     {% endfor %}
   </ol>
-  {% if shown_password %}
-    <p>Parola inițială, afișată o singură dată. Transmite-o printr-un canal sigur; utilizatorul va trebui să o schimbe.</p>
-    <p class="secret">{{ shown_password }}</p>
+  {% if report.password %}
+    <p>Parola, afișată o singură dată. Transmite-o printr-un canal sigur; utilizatorul va trebui să o schimbe.</p>
+    <p class="secret">{{ report.password }}</p>
   {% endif %}
   <div class="actions">
     {% if report.user %}

@@ -81,17 +81,8 @@ def create_app(config_object=Config) -> Flask:
         registry = app.extensions["platforms"]
         return render_template("dashboard.html", platforms=registry.all(), unconfigured=registry.unconfigured)
 
-    @app.errorhandler(403)
-    def forbidden(_):
-        return render_template("error.html", code=403, message="Nu ai dreptul să accesezi această pagină."), 403
-
-    @app.errorhandler(404)
-    def not_found(_):
-        return render_template("error.html", code=404, message="Pagina nu există."), 404
-
-    @app.errorhandler(413)
-    def too_large(_):
-        return render_template("error.html", code=413, message="Cerere prea mare."), 413
+    for code, message in {403: "Nu ai dreptul să accesezi această pagină.", 404: "Pagina nu există.", 413: "Fișier prea mare."}.items():
+        app.register_error_handler(code, lambda _e, c=code, m=message: (render_template("error.html", code=c, message=m), c))
 
     @app.context_processor
     def inject_platforms():

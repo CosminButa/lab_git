@@ -154,14 +154,12 @@ class PlatformClient:
         self._group_cache = None
 
     def find_group(self, group_id: str) -> Group | None:
-        for g in self.cached_groups():
-            if g.id == group_id:
-                return g
-        # Cache may be stale: refresh once before giving up.
-        self.invalidate_group_cache()
-        for g in self.cached_groups():
-            if g.id == group_id:
-                return g
+        """Look the group up by id or name; refresh a possibly stale cache once before giving up."""
+        for attempt in range(2):
+            match = next((g for g in self.cached_groups() if group_id in (g.id, g.name)), None)
+            if match or attempt:
+                return match
+            self.invalidate_group_cache()
         return None
 
     # -- Interface --------------------------------------------------------

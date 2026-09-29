@@ -6,7 +6,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from .. import audit
 from ..extensions import db
 from ..models import Operator
-from ..security import RateLimiter, client_ip
+from ..security import RateLimiter
 from .forms import ChangePasswordForm, LoginForm
 
 bp = Blueprint("auth", __name__)
@@ -27,8 +27,8 @@ def login():
         return redirect(url_for("index"))
     form = LoginForm()
     if form.validate_on_submit():
-        if not _rate_limiter().allow(client_ip()):
-            log.warning("login rate limit hit from %s", client_ip())
+        if not _rate_limiter().allow(request.remote_addr):
+            log.warning("login rate limit hit from %s", request.remote_addr)
             abort(429)
         username = form.username.data.strip()
         operator = Operator.query.filter_by(username=username).first()
@@ -49,7 +49,7 @@ def login():
                 current_app.config["LOGIN_MAX_FAILURES"], current_app.config["LOGIN_LOCKOUT_MINUTES"]
             )
             db.session.commit()
-            log.warning("failed login for '%s' from %s", username, client_ip())
+            log.warning("failed login for '%s' from %s", username, request.remote_addr)
             flash(generic_error, "danger")
             return render_template("auth/login.html", form=form), 401
 

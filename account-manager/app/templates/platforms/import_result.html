@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ client.label }} - rezultat import{% endblock %}
+{% block content %}
+{% set failed = reports | selectattr('has_errors') | list | length %}
+{% set created = reports | selectattr('created') | list | length %}
+<div class="page-head">
+  <h1>Rezultat import în {{ client.label }}</h1>
+  <a class="btn ghost" href="{{ url_for('platforms.import_users', key=client.key) }}">Alt import</a>
+</div>
+<p class="flash {{ 'danger' if failed else 'success' }}">
+  {{ reports | length }} rânduri procesate: {{ created }} utilizatori creați, {{ reports | length - created - failed }} fără modificări de cont, {{ failed }} cu erori.
+  {% if created %}Parolele de mai jos sunt afișate o singură dată.{% endif %}
+</p>
+<table>
+  <thead><tr><th>Utilizator</th><th>Rezultat</th><th>Pași</th><th>Parolă</th></tr></thead>
+  <tbody>
+  {% for r in reports %}
+    <tr>
+      <td>
+        {% if r.user %}<a href="{{ url_for('platforms.user_detail', key=client.key, username=r.username) }}">{{ r.username }}</a>
+        {% else %}{{ r.username }}{% endif %}
+      </td>
+      <td><span class="tag {{ 'off' if r.has_errors else ('on' if r.created else 'warn') }}">
+        {{ 'eroare' if r.has_errors else ('creat' if r.created else 'existent') }}</span></td>
+      <td>
+        <ul class="steps compact">
+          {% for s in r.steps %}
+          <li class="step {{ s.status }}"><span class="status">{{ {'ok': '✔', 'exists': '＝', 'skipped': '–', 'error': '✖'}[s.status] }}</span> <span class="msg">{{ s.message }}</span></li>
+          {% endfor %}
+        </ul>
+      </td>
+      <td>{% if r.password %}<span class="secret small">{{ r.password }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

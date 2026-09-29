@@ -1,8 +1,11 @@
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileAllowed, FileField, FileRequired
 from wtforms import BooleanField, PasswordField, SelectField, SelectMultipleField, StringField
 from wtforms.validators import DataRequired, Length, Optional, Regexp
 
-USERNAME_RE = r"^[a-zA-Z0-9][a-zA-Z0-9._@-]{1,63}$"
+from ..security import EMAIL_RE, USERNAME_RE
+
+_strip = [lambda v: (v or "").strip()]
 
 
 class SearchForm(FlaskForm):
@@ -14,12 +17,12 @@ class SearchForm(FlaskForm):
 
 class CreateUserForm(FlaskForm):
     username = StringField(
-        "Utilizator",
+        "Utilizator", filters=_strip,
         validators=[DataRequired(), Regexp(USERNAME_RE, message="Litere, cifre, . _ @ - (2-64 caractere), începe cu literă/cifră.")],
     )
-    email = StringField("E-mail", validators=[Optional(), Length(max=128), Regexp(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", message="Adresă de e-mail invalidă.")])
-    first_name = StringField("Prenume", validators=[Optional(), Length(max=64)])
-    last_name = StringField("Nume", validators=[Optional(), Length(max=64)])
+    email = StringField("E-mail", filters=_strip, validators=[Optional(), Length(max=128), Regexp(EMAIL_RE, message="Adresă de e-mail invalidă.")])
+    first_name = StringField("Prenume", filters=_strip, validators=[Length(max=64)])
+    last_name = StringField("Nume", filters=_strip, validators=[Length(max=64)])
     password = PasswordField(
         "Parolă inițială",
         validators=[Optional(), Length(min=12, max=128)],
@@ -34,5 +37,6 @@ class GroupForm(FlaskForm):
     group_id = SelectField("Grup", validators=[DataRequired()], validate_choice=True)
 
 
-class ConfirmForm(FlaskForm):
-    """CSRF-only form for POST actions."""
+class ImportForm(FlaskForm):
+    file = FileField("Fișier CSV", validators=[FileRequired(), FileAllowed(["csv", "txt"], "Doar fișiere .csv")])
+    generate_password = BooleanField("Generează parole pentru utilizatorii noi", default=True)

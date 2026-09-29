@@ -32,15 +32,13 @@ class Config:
     SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", True)
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=_int("SESSION_MINUTES", 480))
     SESSION_REFRESH_EACH_REQUEST = True
-    REMEMBER_COOKIE_DURATION = timedelta(0)  # "remember me" is intentionally disabled
 
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = None  # bound to the session lifetime instead
-    MAX_CONTENT_LENGTH = 64 * 1024
+    MAX_CONTENT_LENGTH = 1024 * 1024  # enough for a CSV import
 
     # Reverse proxy / ingress
     PROXY_COUNT = _int("PROXY_COUNT", 1)
-    PREFERRED_URL_SCHEME = "https"
 
     # Login protection
     LOGIN_MAX_FAILURES = _int("LOGIN_MAX_FAILURES", 5)
@@ -61,6 +59,7 @@ class Config:
     API_MAX_RETRIES = _int("API_MAX_RETRIES", 3)
     GROUP_CACHE_SECONDS = _int("GROUP_CACHE_SECONDS", 60)
     SEARCH_RESULT_LIMIT = _int("SEARCH_RESULT_LIMIT", 25)
+    IMPORT_MAX_ROWS = _int("IMPORT_MAX_ROWS", 500)
 
     # Keycloak (Admin REST API, client credentials of a service account)
     KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL")

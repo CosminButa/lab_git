@@ -17,11 +17,5 @@ class OperatorForm(FlaskForm):
     active = BooleanField("Activ", default=True)
 
 
-class EditOperatorForm(FlaskForm):
-    display_name = StringField("Nume afișat", validators=[Length(max=128)])
-    role = SelectField("Rol", choices=[(ROLE_OPERATOR, "Operator"), (ROLE_ADMIN, "Administrator")])
-    active = BooleanField("Activ")
-
-
-class ConfirmForm(FlaskForm):
-    """Empty form used for CSRF protection on POST-only actions."""
+class EditOperatorForm(OperatorForm):
+    username = None  # the username is immutable once created
