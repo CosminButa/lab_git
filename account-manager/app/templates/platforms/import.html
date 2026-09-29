@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_form_macros.html" import field, checkbox %}
+{% block title %}{{ client.label }} - import CSV{% endblock %}
+{% block content %}
+<section class="card narrow wide">
+  <h1>Import utilizatori în {{ client.label }}</h1>
+  <p>Fișier CSV (UTF-8, separator <code>,</code> sau <code>;</code>) cu antetul:</p>
+  <pre>{{ columns | join(',') }}
+ion.popescu,ion@example.com,Ion,Popescu,jira-users|dev-team
+maria.ionescu,maria@example.com,Maria,Ionescu,</pre>
+  <ul class="muted compact">
+    <li>Obligatoriu doar <code>username</code>; celelalte coloane pot lipsi sau fi goale.</li>
+    <li>Mai multe grupuri în aceeași celulă se separă cu <code>|</code>. Fără grup înseamnă fără asociere.</li>
+    <li>Utilizatorii existenți nu sunt recreați și nu li se schimbă parola; li se adaugă doar grupurile lipsă.</li>
+    <li>Fiecare rând este verificat pas cu pas, iar rezultatul este afișat într-un tabel la final.</li>
+  </ul>
+  <form method="post" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+    {{ field(form.file, accept=".csv,text/csv") }}
+    {{ checkbox(form.generate_password) }}
+    {% if not client.password_required %}
+      <p class="muted">{{ client.label }} permite crearea fără parolă; debifează dacă vrei ca platforma să trimită invitații prin e-mail.</p>
+    {% endif %}
+    <button class="btn" type="submit">Importă</button>
+    <a class="btn ghost" href="{{ url_for('platforms.users', key=client.key) }}">Renunță</a>
+  </form>
+</section>
+{% endblock %}

@@ -5,7 +5,8 @@ from .. import audit
 from ..extensions import db
 from ..models import ROLE_ADMIN, AuditLog, Operator
 from ..security import admin_required, generate_password
-from .forms import ConfirmForm, EditOperatorForm, OperatorForm
+from ..forms import ConfirmForm
+from .forms import EditOperatorForm, OperatorForm
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 

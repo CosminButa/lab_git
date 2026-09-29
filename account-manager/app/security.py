@@ -1,4 +1,5 @@
 """Cross-cutting security helpers: headers, login rate limiting, password generation."""
+import re
 import secrets
 import string
 import threading
@@ -6,10 +7,12 @@ import time
 from collections import deque
 from functools import wraps
 
-from flask import abort, current_app, request
+from flask import abort, current_app
 from flask_login import current_user
 
 _ALPHABET = string.ascii_letters + string.digits + "!@#$%^*-_=+"
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._@-]{1,63}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def generate_password(length: int = 16) -> str:
@@ -73,7 +76,3 @@ def admin_required(view):
         return view(*args, **kwargs)
 
     return wrapped
-
-
-def client_ip() -> str:
-    return request.remote_addr or "unknown"
